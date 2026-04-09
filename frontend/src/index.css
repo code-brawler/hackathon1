@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #FDFCF8;
+  --color-sage: #E8EFE8;
+  --color-lavender: #EFEDF4;
+  --color-coral: #FFB7B2;
+  --color-darkText: #292524;
+  --color-mutedText: #78716C;
+  --font-sans: "Outfit", sans-serif;
+  --font-accent: "Reenie Beanie", cursive;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-darkText font-sans;
+  }
+}
