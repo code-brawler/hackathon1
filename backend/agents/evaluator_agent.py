@@ -37,11 +37,25 @@ class EvaluatorAgent:
             
         # 3. Depth (Combination)
         depth_score = (tech_score * 0.6) + (comm_score * 0.4)
-        
+        final_score = round(depth_score, 1)
+
+        # 4. Generate Feedback UI Strings
+        if final_score >= 8.0:
+            feedback = "Great answer! You clearly demonstrated a strong grasp of the required technical concepts."
+            improvement = "Try applying this logic to an even larger, more complex scale scenario."
+        elif final_score >= 5.0:
+            feedback = "Good attempt, highlighting some of the key technical components."
+            improvement = "Increase depth by dropping in some key technical vocabulary like the ones evaluated."
+        else:
+            feedback = "The answer lacked technical depth or length for this question."
+            improvement = "Review the core concepts around this topic and practice expanding your explanations using the STAR method."
+
         return {
             "technical": round(tech_score, 1),
             "communication": round(comm_score, 1),
             "confidence": round(confidence_proxy, 1),
-            "depth": round(depth_score, 1),
+            "depth": final_score,
+            "feedback": feedback,
+            "improvement": improvement,
             "matched_keywords": matched
         }

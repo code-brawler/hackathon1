@@ -28,6 +28,7 @@ class InterviewAnswer(BaseModel):
     question_id: int
     transcript: str
     confidence_score: float
+    target_role: str = "Software Engineering"
 
 class RoleConfig(BaseModel):
     role: str
@@ -40,8 +41,8 @@ async def evaluate_answer(payload: InterviewAnswer):
     scores = evaluator.evaluate(payload.transcript, payload.question_id, payload.confidence_score)
     logger.info(f"Generated Scores: {scores}")
     
-    # 2. Orchestrator decides next question based on scores
-    next_question = global_orchestrator.get_next_question(scores)
+    # 2. Orchestrator decides next question based on scores & role
+    next_question = global_orchestrator.get_next_question(scores, payload.target_role)
     
     return {
         "scores": scores,
@@ -54,12 +55,13 @@ class STTPayload(BaseModel):
 @app.post("/api/stt")
 async def process_speech_to_text(payload: STTPayload = Body(...)):
     try:
-        raw_pcm_bytes = base64.b64decode(payload.audio_base64)
-        
-        # We process it natively as 16kHz, 16-bit (width 2), mono PCM audio data
-        audio_data = sr.AudioData(raw_pcm_bytes, sample_rate=16000, sample_width=2)
+        import io
+        raw_wav_bytes = base64.b64decode(payload.audio_base64)
         
         recognizer = sr.Recognizer()
+        with sr.AudioFile(io.BytesIO(raw_wav_bytes)) as source:
+            audio_data = recognizer.record(source)
+            
         transcript = recognizer.recognize_google(audio_data)
         
         return {"transcript": transcript}
@@ -76,11 +78,11 @@ async def process_speech_to_text(payload: STTPayload = Body(...)):
 async def text_to_speech(text: str):
     try:
         encoded_text = urllib.parse.quote(text[:300])
-        url = f"https://api.streamelements.com/kappa/v2/speech?voice=Salli&text={encoded_text}"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={encoded_text}&tl=en&client=tw-ob"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
         with urllib.request.urlopen(req) as response:
             audio_data = response.read()
-        return Response(content=audio_data, media_type="audio/mp3")
+        return Response(content=audio_data, media_type="audio/mpeg")
     except Exception as e:
         logger.error(f"TTS Error: {e}")
         return Response(content=b"", status_code=500)

@@ -11,9 +11,10 @@ const Interview = () => {
   
   const videoRef = useRef(null);
   const [sessionStarted, setSessionStarted] = useState(false);
-  const [currentQuestion, setCurrentQuestion] = useState("Hi! Thanks for taking the time to interview today. To start off, could you tell me about your background and what you're looking for in your next role?");
+  const [currentQuestion, setCurrentQuestion] = useState(`Hi! Thanks for taking the time to interview today. To start off, could you tell me about your background and what you're looking for in your next role as a ${targetRole}?`);
   const [questionId, setQuestionId] = useState(0);
   const [scoreHistory, setScoreHistory] = useState([]);
+  const [lastEvaluation, setLastEvaluation] = useState(null);
   
   // Custom Hooks
   const { confidenceScore, issues } = useBodyLanguage(videoRef);
@@ -62,7 +63,8 @@ const Interview = () => {
         body: JSON.stringify({
           question_id: questionId,
           transcript: finalTranscript,
-          confidence_score: confidenceScore
+          confidence_score: confidenceScore,
+          target_role: targetRole
         })
       });
       
@@ -70,6 +72,11 @@ const Interview = () => {
       setCurrentQuestion(data.next_question.text);
       setQuestionId(data.next_question.id);
       setScoreHistory(prev => [...prev, data.scores]);
+      setLastEvaluation({
+         score: data.scores.depth,
+         feedback: data.scores.feedback,
+         improvement: data.scores.improvement
+      });
       
       speakText(data.next_question.text, () => {
           if (data.next_question.id === 99) {
@@ -176,6 +183,16 @@ const Interview = () => {
               "{currentQuestion}"
             </p>
           </div>
+
+          {lastEvaluation && (
+            <div className="bg-white p-6 rounded-3xl mt-4 shadow-sm border border-black/5 relative min-h-[100px] animate-in fade-in slide-in-from-bottom-4">
+              <div className="absolute top-0 left-6 -translate-y-1/2 bg-green-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">Feedback (Score: {lastEvaluation.score}/10)</div>
+              <p className="text-sm font-medium text-darkText mb-2 mt-2">"{lastEvaluation.feedback}"</p>
+              <div className="bg-coral/10 p-3 rounded-xl border border-coral/20">
+                 <p className="text-sm text-coral font-medium">💡 Tip: {lastEvaluation.improvement}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* User Column */}

@@ -2,18 +2,18 @@ class OrchestratorAgent:
     def __init__(self):
         self.question_bank = {
             "beginner": [
-                {"id": 0, "text": "To start off, could you tell me about your background?", "topic": "HR"},
-                {"id": 10, "text": "What is the difference between a list and a dictionary in Python?", "topic": "Python"},
-                {"id": 11, "text": "What does a load balancer do?", "topic": "System Design"}
+                {"id": 0, "text": "To start off, could you tell me about your background and what you're looking for as a [ROLE]?", "topic": "HR"},
+                {"id": 10, "text": "What do you think are the core foundational skills necessary to be a successful [ROLE]?", "topic": "HR"},
+                {"id": 11, "text": "Can you describe a simple problem you solved recently in your work?", "topic": "Behavioral"}
             ],
             "intermediate": [
-                {"id": 1, "text": "Could you walk me through a time when you had to optimize a system?", "topic": "System Design"},
-                {"id": 2, "text": "Explain the difference between a process and a thread.", "topic": "OS"},
-                {"id": 12, "text": "How do you handle a production incident when the server goes down?", "topic": "Behavioral"}
+                {"id": 1, "text": "Could you walk me through a time when you had to optimize a system or workflow in your capacity as a [ROLE]?", "topic": "System Design"},
+                {"id": 2, "text": "How do you handle scope creep and changing requirements in the middle of a project?", "topic": "Behavioral"},
+                {"id": 12, "text": "How do you handle a critical incident when the system or project is failing?", "topic": "Behavioral"}
             ],
             "advanced": [
-                {"id": 20, "text": "Explain how you would design a rate limiter for a distributed API.", "topic": "System Design"},
-                {"id": 21, "text": "How do you avoid deadlocks in a highly concurrent database transaction?", "topic": "DB Architecture"}
+                {"id": 20, "text": "Explain how you would design or structure a large-scale project across multiple functional teams as a senior [ROLE].", "topic": "System Architecture"},
+                {"id": 21, "text": "Describe a scenario where you had to push back on leadership because of technical or strategic constraints.", "topic": "Leadership"}
             ]
         }
         
@@ -21,7 +21,7 @@ class OrchestratorAgent:
         self.current_tier = "intermediate"
         self.asked_ids = set([0]) # Assuming 0 is asked first
         
-    def get_next_question(self, last_scores: dict) -> dict:
+    def get_next_question(self, last_scores: dict, target_role: str = "Software Engineering") -> dict:
         avg = (last_scores["technical"] + last_scores["communication"]) / 2
         
         # Adjust difficulty
@@ -56,6 +56,9 @@ class OrchestratorAgent:
         text = next_q["text"]
         if avg < 5.0 and len(self.asked_ids) < 4:
             text = "No worries, let's switch gears. " + text
+            
+        # Parse template
+        text = text.replace("[ROLE]", target_role)
             
         return {"id": next_q["id"], "text": text, "topic": next_q["topic"]}
 
