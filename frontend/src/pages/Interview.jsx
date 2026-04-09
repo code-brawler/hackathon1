@@ -56,7 +56,7 @@ const Interview = () => {
     }
     
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const API_URL = import.meta.env.VITE_API_URL || 'https://hackathon1.onrender.com';
       const response = await fetch(`${API_URL}/api/interview/evaluate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

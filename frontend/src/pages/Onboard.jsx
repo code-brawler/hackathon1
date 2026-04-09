@@ -27,7 +27,7 @@ const Onboard = () => {
         const formData = new FormData();
         formData.append('file', file || new Blob(['mock content'], { type: 'application/pdf' }));
         formData.append('target_role', role);
-        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+        const API_URL = import.meta.env.VITE_API_URL || 'https://hackathon1.onrender.com';
         await fetch(`${API_URL}/api/resume/parse`, {
           method: 'POST',
           body: formData

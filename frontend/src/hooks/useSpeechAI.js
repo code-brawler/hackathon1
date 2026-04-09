@@ -109,7 +109,7 @@ export const useSpeechAI = (onTranscriptSubmit) => {
               const base64 = btoa(binary);
               
               try {
-                  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+                  const API_URL = import.meta.env.VITE_API_URL || 'https://hackathon1.onrender.com';
                   const response = await fetch(`${API_URL}/api/stt`, {
                       method: 'POST',
                       headers: {'Content-Type': 'application/json'},
@@ -183,7 +183,7 @@ export const useSpeechAI = (onTranscriptSubmit) => {
     // We use the proxied backend TTS to reliably avoid browser strict CORS restrictions,
     // which Firefox sometimes imposes on external Audio element sources.
     const cleanText = text.replace(/\[|\]|\*|#/g, ''); 
-    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const API_URL = import.meta.env.VITE_API_URL || 'https://hackathon1.onrender.com';
     const url = `${API_URL}/api/tts?text=${encodeURIComponent(cleanText.substring(0, 300))}`;
     
     // Clean up previous audio if any
