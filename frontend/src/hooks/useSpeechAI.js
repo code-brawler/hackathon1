@@ -1,26 +1,33 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 export const useSpeechAI = (onTranscriptSubmit) => {
   const [isRecording, setIsRecording] = useState(false);
-  const [transcript, setTranscript] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [transcript, setTranscript] = useState('');
   
   const recognitionRef = useRef(null);
   const isRecordingRef = useRef(false);
   const finalTranscriptRef = useRef('');
+  const latestTranscriptRef = useRef('');
+
+  useEffect(() => {
+     latestTranscriptRef.current = transcript;
+  }, [transcript]);
 
   useEffect(() => {
     return () => {
-      isRecordingRef.current = false;
       if (recognitionRef.current) {
-         recognitionRef.current.disconnect();
+        try { recognitionRef.current.stop(); } catch(e){}
+        try { recognitionRef.current.disconnect(); } catch(e){}
       }
+      window.speechSynthesis.cancel();
     };
   }, []);
 
   const startAudioCapture = async () => {
       try {
           const SpeechRecognitionLocal = window.SpeechRecognition || window.webkitSpeechRecognition;
+          
           if (SpeechRecognitionLocal) {
               const recognition = new SpeechRecognitionLocal();
               recognition.continuous = true;
@@ -64,24 +71,31 @@ export const useSpeechAI = (onTranscriptSubmit) => {
           // -------------------------------------------------------------
           // FIREFOX FALLBACK (Backend STT Pipeline converting PCM to WAV)
           // -------------------------------------------------------------
-          console.log("Native STT bypass via robust backend WAV encoding applied.");
+          console.log("Native STT bypass via robust backend WAV encoding applied for Firefox.");
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const audioContext = new AudioContext({ sampleRate: 16000 });
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+          if (audioContext.state === 'suspended') {
+              await audioContext.resume();
+          }
           const source = audioContext.createMediaStreamSource(stream);
-          const processor = audioContext.createScriptProcessor(16384, 1, 1);
+          const processor = audioContext.createScriptProcessor(4096, 1, 1);
           
-          let chunkBuffer = [];
+          let cumulativeBuffer = [];
+          let lastTransmission = Date.now();
+          let isTranscribing = false;
 
           const sendAudioChunkToBackend = async (pcmData) => {
+              if (isTranscribing) return;
+              isTranscribing = true;
               const buffer = new ArrayBuffer(44 + pcmData.length * 2);
               const view = new DataView(buffer);
               
-              const writeString = (v, offset, string) => {
+              const writeString = (view, offset, string) => {
                   for (let i = 0; i < string.length; i++) {
-                      v.setUint8(offset + i, string.charCodeAt(i));
+                      view.setUint8(offset + i, string.charCodeAt(i));
                   }
               };
-              
+
               writeString(view, 0, 'RIFF');
               view.setUint32(4, 36 + pcmData.length * 2, true);
               writeString(view, 8, 'WAVE');
@@ -95,48 +109,52 @@ export const useSpeechAI = (onTranscriptSubmit) => {
               view.setUint16(34, 16, true);
               writeString(view, 36, 'data');
               view.setUint32(40, pcmData.length * 2, true);
-              
+
               let offset = 44;
               for (let i = 0; i < pcmData.length; i++, offset += 2) {
-                  view.setInt16(offset, pcmData[i], true); 
+                  view.setInt16(offset, pcmData[i], true);
               }
-              
+
               let binary = '';
               const bytes = new Uint8Array(buffer);
-              for (let i = 0; i < bytes.byteLength; i++) {
-                  binary += String.fromCharCode(bytes[i]);
+              const chunkSize = 8192;
+              for (let i = 0; i < bytes.length; i += chunkSize) {
+                  binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
               }
               const base64 = btoa(binary);
-              
+
               try {
-                  const API_URL = import.meta.env.VITE_API_URL || 'https://hackathon1.onrender.com';
+                  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
                   const response = await fetch(`${API_URL}/api/stt`, {
                       method: 'POST',
-                      headers: {'Content-Type': 'application/json'},
+                      headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ audio_base64: base64 })
                   });
                   const data = await response.json();
                   if (data.transcript) {
-                      finalTranscriptRef.current += data.transcript + ' ';
-                      setTranscript((finalTranscriptRef.current).trim());
+                      setTranscript(data.transcript);
                   }
               } catch(e) {
                   console.error("Backend STT error", e);
+              } finally {
+                  isTranscribing = false;
               }
           };
 
           processor.onaudioprocess = (e) => {
               if (!isRecordingRef.current) return;
+              
               const inputData = e.inputBuffer.getChannelData(0);
               for (let i = 0; i < inputData.length; i++) {
                   const s = Math.max(-1, Math.min(1, inputData[i]));
-                  chunkBuffer.push(s < 0 ? s * 0x8000 : s * 0x7FFF);
+                  cumulativeBuffer.push(s < 0 ? s * 0x8000 : s * 0x7FFF);
               }
-              // Send off chunks every ~3-4 seconds (64000 samples)
-              if (chunkBuffer.length >= 64000) {
-                  const pcmData = new Int16Array(chunkBuffer);
-                  chunkBuffer = [];
-                  sendAudioChunkToBackend(pcmData);
+
+              const now = Date.now();
+              if (now - lastTransmission >= 4500 && cumulativeBuffer.length > 32000) {
+                  lastTransmission = now;
+                  const pcmData = new Int16Array(cumulativeBuffer);
+                  sendAudioChunkToBackend(pcmData).catch(()=>{});
               }
           };
 
@@ -144,13 +162,12 @@ export const useSpeechAI = (onTranscriptSubmit) => {
           processor.connect(audioContext.destination);
 
           recognitionRef.current = {
-             disconnect: () => {
-                 try { processor.disconnect(); source.disconnect(); } catch(err) {}
-             },
-             stop: () => {
-                 try { processor.disconnect(); source.disconnect(); } catch(err) {} 
-             },
-             start: () => {} 
+              disconnect: () => {
+                  try { source.disconnect(); } catch(e) {}
+                  try { processor.disconnect(); } catch(e) {}
+                  try { audioContext.close(); } catch(e) {}
+                  stream.getTracks().forEach(track => track.stop());
+              }
           };
 
       } catch (err) {
@@ -172,56 +189,49 @@ export const useSpeechAI = (onTranscriptSubmit) => {
     }
   }, []);
 
-  const speakText = useCallback((text, onComplete) => {
-    // Stop recording while the AI talks to prevent feedback loop
-    if (isRecordingRef.current) {
-        try { recognitionRef.current?.stop(); } catch(e){}
+  const speakText = useCallback((text, onComplete = () => {}) => {
+    if (!text) return;
+    
+    // Check support
+    if (!window.speechSynthesis) {
+        console.error("speechSynthesis not supported natively.");
+        return;
     }
+    
+    // Stop any current reading
+    window.speechSynthesis.cancel();
 
     setIsSpeaking(true);
     
-    // We use the proxied backend TTS to reliably avoid browser strict CORS restrictions,
-    // which Firefox sometimes imposes on external Audio element sources.
-    const cleanText = text.replace(/\[|\]|\*|#/g, ''); 
-    const API_URL = import.meta.env.VITE_API_URL || 'https://hackathon1.onrender.com';
-    const url = `${API_URL}/api/tts?text=${encodeURIComponent(cleanText.substring(0, 300))}`;
+    const utterance = new SpeechSynthesisUtterance(text);
     
-    // Clean up previous audio if any
-    if (window.currentAudioElement) {
-       window.currentAudioElement.pause();
-    }
+    // Select highest quality OS-level human-sounding voice available
+    const setOptimizedVoice = () => {
+        const voices = window.speechSynthesis.getVoices();
+        const premium = voices.find(v => v.name.includes('Premium') || v.name.includes('Natural') || v.name.includes('Google US'));
+        if (premium) utterance.voice = premium;
+    };
+    setOptimizedVoice();
+    // Some browsers load voices async, listener applies fallback map natively
+    window.speechSynthesis.onvoiceschanged = setOptimizedVoice;
     
-    const audio = new Audio(url);
-    window.currentAudioElement = audio;
+    // Optimized playback parameters to sound clear and conversational
+    utterance.rate = 0.9;
+    utterance.pitch = 1.0;
     
-    audio.onended = () => {
-       setIsSpeaking(false);
-       if (onComplete) onComplete();
-       if (isRecordingRef.current) {
-           try { recognitionRef.current?.start(); } catch(e){}
-       }
+    utterance.onend = () => {
+        setIsSpeaking(false);
+        onComplete();
     };
     
-    audio.onerror = () => {
-       console.error("StreamElements TTS failed");
-       setIsSpeaking(false);
-       if (onComplete) onComplete();
-       if (isRecordingRef.current) {
-           try { recognitionRef.current?.start(); } catch(e){}
-       }
+    utterance.onerror = (e) => {
+        console.error("TTS Output Error", e);
+        setIsSpeaking(false);
     };
 
-    audio.play().catch(e => {
-       console.error("Audio block: " + e);
-       audio.onerror();
-    });
-
+    window.speechSynthesis.speak(utterance);
+    
   }, []);
-
-  const latestTranscriptRef = useRef(transcript);
-  useEffect(() => {
-     latestTranscriptRef.current = transcript;
-  }, [transcript]);
 
   const submitAnswer = useCallback(() => {
     if (isRecordingRef.current) {
@@ -229,8 +239,6 @@ export const useSpeechAI = (onTranscriptSubmit) => {
         isRecordingRef.current = false;
         setIsRecording(false);
     }
-    
-    // Slight delay to allow final chunk to process from hook
     setTimeout(() => {
         const finalAnswer = latestTranscriptRef.current;
         if (onTranscriptSubmit) {
@@ -238,8 +246,7 @@ export const useSpeechAI = (onTranscriptSubmit) => {
         }
         setTranscript('');
         finalTranscriptRef.current = '';
-    }, 1000);
-    
+    }, 500);
   }, [onTranscriptSubmit]);
 
   return {

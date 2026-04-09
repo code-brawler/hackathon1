@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mic, MicOff, Video, Target, AlertCircle, Play } from 'lucide-react';
+import { Mic, MicOff, Video, Target, AlertCircle, Play, Loader } from 'lucide-react';
 import { useSpeechAI } from '../hooks/useSpeechAI';
 import { useBodyLanguage } from '../hooks/useBodyLanguage';
 
@@ -11,13 +11,26 @@ const Interview = () => {
   
   const videoRef = useRef(null);
   const [sessionStarted, setSessionStarted] = useState(false);
-  const [currentQuestion, setCurrentQuestion] = useState(`Hi! Thanks for taking the time to interview today. To start off, could you tell me about your background and what you're looking for in your next role as a ${targetRole}?`);
-  const [questionId, setQuestionId] = useState(0);
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
+  
+  const [questionsList, setQuestionsList] = useState([]);
+  const [currentIdx, setCurrentIdx] = useState(0);
+  
   const [scoreHistory, setScoreHistory] = useState([]);
   const [lastEvaluation, setLastEvaluation] = useState(null);
   
-  // Custom Hooks
+  const currentQuestionObj = questionsList[currentIdx] || { text: "Loading question..." };
+  
   const { confidenceScore, issues } = useBodyLanguage(videoRef);
+  const [browserWarning, setBrowserWarning] = useState("");
+
+  useEffect(() => {
+      if (navigator.brave) {
+          setBrowserWarning("Brave Browser detected: Native STT APIs are blocked natively by Brave's privacy engine. Chrome is highly recommended.");
+      } else if (navigator.userAgent.toLowerCase().includes('firefox')) {
+          setBrowserWarning("Firefox detected: Running backend proxy WAV transcriber fallback. Chrome is recommended for uninterrupted continuous WebKit streaming.");
+      }
+  }, []);
   const { 
     isRecording, 
     transcript, 
@@ -28,7 +41,6 @@ const Interview = () => {
     setTranscript 
   } = useSpeechAI(handleAnswerSubmit);
 
-  // Initialize camera only (no early speaking)
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
@@ -39,78 +51,114 @@ const Interview = () => {
       .catch(err => console.error("Could not get camera or mic permissions", err));
   }, []);
 
-  
-  const startSession = () => {
-      setSessionStarted(true);
-      // Now it's safe to speak (user gesture registered)
-      speakText(currentQuestion);
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+  const startSession = async () => {
+      // Synchronously unlock browser Native Audio/Synthesizers via click gesture before async
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+      
+      setLoadingQuestions(true);
+      
+      try {
+          // Feature 1: Call API to generate 5 dynamic questions
+          const response = await fetch(`${API_URL}/api/questions/generate`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ role: targetRole })
+          });
+          const data = await response.json();
+          const fetchedQs = data.questions;
+          
+          setQuestionsList(fetchedQs);
+          setCurrentIdx(0);
+          setLoadingQuestions(false);
+          setSessionStarted(true);
+          
+          // Feature 2: Automatically map the first question text into TTS
+          speakText(fetchedQs[0].text);
+          
+      } catch (e) {
+          console.error("Failed to generate questions:", e);
+          setLoadingQuestions(false);
+          // Fallback just in case
+          setQuestionsList([{"id": 1, "text": "Can you briefly describe your background?", "topic": "Intro"}]);
+          setSessionStarted(true);
+      }
   };
 
   async function handleAnswerSubmit(finalTranscript) {
     if (finalTranscript.trim().length === 0) return;
     
-    // Check if we hit the closing question previously
-    if (questionId === 99) {
+    // Check if we reached the end
+    if (currentIdx >= questionsList.length) {
         endInterview();
         return;
     }
     
     try {
-      const API_URL = import.meta.env.VITE_API_URL || 'https://hackathon1.onrender.com';
+      // Feature 4: Send the isolated Answer and actual question string over
       const response = await fetch(`${API_URL}/api/interview/evaluate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question_id: questionId,
+          question_text: currentQuestionObj.text,
           transcript: finalTranscript,
-          confidence_score: confidenceScore,
           target_role: targetRole
         })
       });
       
-      const data = await response.json();
-      setCurrentQuestion(data.next_question.text);
-      setQuestionId(data.next_question.id);
-      setScoreHistory(prev => [...prev, data.scores]);
+      const evalData = await response.json();
+      
+      setScoreHistory(prev => [...prev, evalData.score]);
       setLastEvaluation({
-         score: data.scores.depth,
-         feedback: data.scores.feedback,
-         improvement: data.scores.improvement
+         score: evalData.score,
+         feedback: evalData.feedback,
+         improvement: evalData.improvement
       });
       
-      speakText(data.next_question.text, () => {
-          if (data.next_question.id === 99) {
-              // Automatically stop if it's the final wrap up question
-              setTimeout(() => endInterview(data.scores), 5000);
-          }
-      });
+      const nextIdx = currentIdx + 1;
+      
+      if (nextIdx < questionsList.length) {
+          setCurrentIdx(nextIdx);
+          // Voice read out the immediate next string
+          speakText(questionsList[nextIdx].text);
+      } else {
+          // Interview completed natively
+          setCurrentIdx(nextIdx); // push one past the final slot
+          speakText("Alright! That's all my questions. Thanks for interviewing! Let's check out your dashboard.", () => {
+              setTimeout(() => endInterview(evalData.score), 2000);
+          });
+      }
       
     } catch (e) {
       console.error("Backend error", e);
-      speakText("I seem to be having connection issues. Could you repeat that?");
+      speakText("I seem to be having connection issues computing that evaluation. Let's move to the next question.");
+      
+      const nextIdx = currentIdx + 1;
+      if (nextIdx < questionsList.length) {
+          setCurrentIdx(nextIdx);
+          speakText(questionsList[nextIdx].text);
+      } else {
+          endInterview();
+      }
     }
   }
 
-  const endInterview = (finalScoresToInclude) => {
-    // Calculate averages to pass to dashboard
-    // finalScoresToInclude handles async state updates. If it's already in the array it's fine, but we'll use a local copy.
-    const history = finalScoresToInclude ? [...scoreHistory.filter(s => s !== finalScoresToInclude), finalScoresToInclude] : scoreHistory;
-    let avgTech = 0, avgComm = 0, avgDepth = 0;
+  const endInterview = (finalScoreToInclude) => {
+    const history = finalScoreToInclude ? [...scoreHistory, finalScoreToInclude] : scoreHistory;
+    let avgScore = 0;
     
     if (history.length > 0) {
-        avgTech = history.reduce((acc, curr) => acc + curr.technical, 0) / history.length;
-        avgComm = history.reduce((acc, curr) => acc + curr.communication, 0) / history.length;
-        avgDepth = history.reduce((acc, curr) => acc + curr.depth, 0) / history.length;
+        avgScore = history.reduce((acc, curr) => acc + curr, 0) / history.length;
     }
-    
     
     navigate('/dashboard', { state: { 
         completed: true, 
         metrics: {
-            technical: avgTech.toFixed(1),
-            communication: avgComm.toFixed(1),
+            technical: avgScore.toFixed(1),
+            communication: avgScore.toFixed(1),
             confidence: confidenceScore,
-            depth: avgDepth.toFixed(1),
+            depth: avgScore.toFixed(1),
             sessions: history.length
         }
     }});
@@ -124,8 +172,11 @@ const Interview = () => {
                 <Target size={48} className="text-coral mx-auto mb-4" />
                 <h2 className="text-3xl font-black text-darkText mb-2">Ready to begin?</h2>
                 <p className="text-mutedText mb-8">Ensure your volume is up, and look directly at the camera.</p>
-                <button onClick={startSession} className="bg-coral text-darkText px-8 py-4 rounded-full text-lg font-bold shadow-lg shadow-coral/30 flex items-center justify-center w-full gap-2 hover:scale-105 transition-all outline-none">
-                    <Play size={20} fill="currentColor" /> Start Session
+                <button 
+                   onClick={startSession} 
+                   disabled={loadingQuestions}
+                   className={`bg-coral text-darkText px-8 py-4 rounded-full text-lg font-bold shadow-lg flex items-center justify-center w-full gap-2 transition-all outline-none ${loadingQuestions ? 'opacity-70' : 'hover:scale-105 shadow-coral/30'}`}>
+                    {loadingQuestions ? <><Loader className="animate-spin" size={20}/> Generating Questions...</> : <><Play size={20} fill="currentColor" /> Start Session</>}
                 </button>
             </div>
         </div>
@@ -137,18 +188,25 @@ const Interview = () => {
           <div className="bg-coral/20 text-coral p-2 rounded-full"><Target size={24} /></div>
           <div>
             <h2 className="font-bold text-darkText leading-none">{targetRole}</h2>
-            <span className="text-xs text-mutedText font-medium uppercase tracking-wider">Mock Session</span>
+            <span className="text-xs text-mutedText font-medium uppercase tracking-wider">Mock Session (Q{Math.min(currentIdx + 1, questionsList.length)}/5)</span>
           </div>
         </div>
         
-        <div className="flex items-center gap-6">
+        {browserWarning && (
+            <div className="hidden lg:flex items-center gap-2 bg-yellow-100 border border-yellow-300 px-4 py-1.5 rounded-xl ml-4 max-w-sm">
+                <AlertCircle size={16} className="text-yellow-600 flex-shrink-0" />
+                <span className="text-[10px] sm:text-xs text-yellow-800 font-semibold leading-tight">{browserWarning}</span>
+            </div>
+        )}
+        
+        <div className="flex items-center gap-6 ml-auto">
           <div className="flex flex-col items-end">
             <span className="text-xs text-mutedText mb-1">Confidence Score: <span className="font-bold text-darkText">{confidenceScore}</span></span>
             <div className="flex gap-1 w-full bg-black/10 rounded-full h-3 overflow-hidden">
                <div className="bg-coral h-full transition-all duration-300" style={{width: `${(confidenceScore/10)*100}%`}}></div>
             </div>
           </div>
-          <button onClick={endInterview} className="bg-darkText text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-red-500 transition-colors">
+          <button onClick={() => endInterview()} className="bg-darkText text-white px-5 py-2 rounded-full text-sm font-semibold hover:bg-red-500 transition-colors">
             End
           </button>
         </div>
@@ -180,7 +238,7 @@ const Interview = () => {
           <div className="bg-white p-6 rounded-3xl mt-4 shadow-sm border border-black/5 relative min-h-[120px]">
             <div className="absolute top-0 left-6 -translate-y-1/2 bg-coral text-white text-xs font-bold px-2 py-0.5 rounded-full">Current Question</div>
             <p className="text-lg font-medium text-darkText leading-relaxed">
-              "{currentQuestion}"
+              "{currentIdx < questionsList.length ? currentQuestionObj.text : "Finishing session..."}"
             </p>
           </div>
 
