@@ -7,7 +7,13 @@ import { useBodyLanguage } from '../hooks/useBodyLanguage';
 const Interview = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const targetRole = location.state?.role || "Software Engineering";
+  const { role, exp, tech, focus } = location.state || { 
+      role: 'Full Stack Engineer', 
+      exp: 'Mid-Level (3-5 YOE)', 
+      tech: 'React / Frontend Ecosystem', 
+      focus: 'Mixed / Standard Interview' 
+  };
+  const targetRole = role;
   
   const videoRef = useRef(null);
   const [sessionStarted, setSessionStarted] = useState(false);
@@ -17,11 +23,12 @@ const Interview = () => {
   const [currentIdx, setCurrentIdx] = useState(0);
   
   const [scoreHistory, setScoreHistory] = useState([]);
+  const [answerHistory, setAnswerHistory] = useState([]);
   const [lastEvaluation, setLastEvaluation] = useState(null);
   
   const currentQuestionObj = questionsList[currentIdx] || { text: "Loading question..." };
   
-  const { confidenceScore, issues } = useBodyLanguage(videoRef);
+  const { confidenceScore, issues, motionViolations, multiFaceViolations } = useBodyLanguage(videoRef);
   const [browserWarning, setBrowserWarning] = useState("");
 
   useEffect(() => {
@@ -54,9 +61,6 @@ const Interview = () => {
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
   const startSession = async () => {
-      // Synchronously unlock browser Native Audio/Synthesizers via click gesture before async
-      window.speechSynthesis.speak(new SpeechSynthesisUtterance(''));
-      
       setLoadingQuestions(true);
       
       try {
@@ -64,7 +68,7 @@ const Interview = () => {
           const response = await fetch(`${API_URL}/api/questions/generate`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ role: targetRole })
+              body: JSON.stringify({ role: targetRole, exp, tech, focus })
           });
           const data = await response.json();
           const fetchedQs = data.questions;
@@ -103,13 +107,15 @@ const Interview = () => {
         body: JSON.stringify({
           question_text: currentQuestionObj.text,
           transcript: finalTranscript,
-          target_role: targetRole
+          target_role: targetRole,
+          exp, tech, focus
         })
       });
       
       const evalData = await response.json();
       
       setScoreHistory(prev => [...prev, evalData.score]);
+      setAnswerHistory(prev => [...prev, { q: currentQuestionObj.text, a: finalTranscript, score: evalData.score }]);
       setLastEvaluation({
          score: evalData.score,
          feedback: evalData.feedback,
@@ -144,6 +150,21 @@ const Interview = () => {
     }
   }
 
+  const handleSkipQuestion = () => {
+      setTranscript("");
+      setLastEvaluation({ score: 0, feedback: "Question Skipped natively.", improvement: "Do not skip active questions if possible." });
+      
+      const nextIdx = currentIdx + 1;
+      if (nextIdx < questionsList.length) {
+          setCurrentIdx(nextIdx);
+          speakText(questionsList[nextIdx].text);
+      } else {
+          speakText("Alright! That's all my questions. Thanks for interviewing! Let's check out your dashboard.", () => {
+              setTimeout(() => endInterview(null), 2000);
+          });
+      }
+  };
+
   const endInterview = (finalScoreToInclude) => {
     const history = finalScoreToInclude ? [...scoreHistory, finalScoreToInclude] : scoreHistory;
     let avgScore = 0;
@@ -155,11 +176,20 @@ const Interview = () => {
     navigate('/dashboard', { state: { 
         completed: true, 
         metrics: {
+            behavior: {
+                motionFlags: motionViolations,
+                multiplePeopleFlags: multiFaceViolations,
+                confidenceScore: confidenceScore
+            },
             technical: avgScore.toFixed(1),
             communication: avgScore.toFixed(1),
             confidence: confidenceScore,
             depth: avgScore.toFixed(1),
-            sessions: history.length
+            sessions: history.length,
+            questionsAttempted: history.length,
+            totalQuestions: questionsList.length,
+            answerHistory: answerHistory,
+            role, exp, tech
         }
     }});
   };
@@ -188,7 +218,7 @@ const Interview = () => {
           <div className="bg-coral/20 text-coral p-2 rounded-full"><Target size={24} /></div>
           <div>
             <h2 className="font-bold text-darkText leading-none">{targetRole}</h2>
-            <span className="text-xs text-mutedText font-medium uppercase tracking-wider">Mock Session (Q{Math.min(currentIdx + 1, questionsList.length)}/5)</span>
+            <span className="text-xs text-mutedText font-medium uppercase tracking-wider">Mock Session (Q{Math.min(currentIdx + 1, questionsList.length)}/{questionsList.length || 5})</span>
           </div>
         </div>
         
@@ -299,7 +329,7 @@ const Interview = () => {
             <div className="mt-4 pt-4 border-t border-black/5 flex justify-between">
               <button 
                 className="text-sm font-semibold text-mutedText hover:text-darkText transition-colors flex items-center gap-1"
-                onClick={() => setTranscript("I don't know the answer to this one.")}
+                onClick={handleSkipQuestion}
               >
                 Skip Question &rarr;
               </button>

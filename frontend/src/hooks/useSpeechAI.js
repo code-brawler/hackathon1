@@ -205,6 +205,10 @@ export const useSpeechAI = (onTranscriptSubmit) => {
     
     const utterance = new SpeechSynthesisUtterance(text);
     
+    // Protect utterance from Chrome GC bug natively
+    window.utterances = window.utterances || [];
+    window.utterances.push(utterance);
+    
     // Select highest quality OS-level human-sounding voice available
     const setOptimizedVoice = () => {
         const voices = window.speechSynthesis.getVoices();

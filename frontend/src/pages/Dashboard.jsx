@@ -1,8 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import PillNav from '../components/ui/PillNav';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
-import { Download, PlayCircle, BookOpen } from 'lucide-react';
+import { Download, PlayCircle, BookOpen, Target } from 'lucide-react';
 
 
 const Dashboard = () => {
@@ -29,6 +29,60 @@ const Dashboard = () => {
     { subject: 'Depth', A: (parseFloat(metrics.depth)/10)*100, fullMark: 100 },
   ], [metrics]);
 
+  const [behaviorData, setBehaviorData] = useState(null);
+  const [summaryData, setSummaryData] = useState(null);
+  const [loadingBehavior, setLoadingBehavior] = useState(true);
+
+  useEffect(() => {
+      if (!metrics.behavior) {
+          setLoadingBehavior(false);
+          return;
+      }
+      const fetchBehavior = async () => {
+          try {
+              const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+              const response = await fetch(`${API_URL}/api/interview/behavior`, {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({
+                      motion_flags: metrics.behavior.motionFlags || 0,
+                      multi_face_flags: metrics.behavior.multiplePeopleFlags || 0,
+                      confidence: parseFloat(metrics.confidence) || 5.0
+                  })
+              });
+              const data = await response.json();
+              setBehaviorData(data);
+          } catch(e) {
+              console.error("Behavior processing failed.", e);
+          } finally {
+              setLoadingBehavior(false);
+          }
+      };
+      
+      const fetchSummary = async () => {
+          if (!metrics.answerHistory) return;
+          try {
+              const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+              const response = await fetch(`${API_URL}/api/interview/summary`, {
+                  method: 'POST',
+                  headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({
+                      history: metrics.answerHistory,
+                      role: metrics.role || "Software Engineer",
+                      exp: metrics.exp || "Mid-Level"
+                  })
+              });
+              const data = await response.json();
+              setSummaryData(data);
+          } catch(e) {
+              console.error("Summary processing failed.", e);
+          }
+      };
+      
+      fetchBehavior();
+      fetchSummary();
+  }, [metrics]);
+
   return (
     <div className="min-h-screen pt-32 pb-20 px-4 md:px-8 max-w-7xl mx-auto">
       <PillNav />
@@ -48,8 +102,8 @@ const Dashboard = () => {
         {/* KPI Cards */}
         <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Avg Technical', val: metrics.technical, detail: 'Score out of 10' },
-            { label: 'Avg Communication', val: metrics.communication, detail: 'Score out of 10' },
+            { label: 'Completion', val: `${metrics.questionsAttempted || 0}/${metrics.totalQuestions || 5}`, detail: 'Questions Attempted', alert: (metrics.questionsAttempted || 0) < (metrics.totalQuestions || 5) },
+            { label: 'Avg Feedback Rank', val: metrics.technical, detail: 'Score out of 10' },
             { label: 'Confidence Proxy', val: metrics.confidence, detail: parseFloat(metrics.confidence) < 7.0 ? 'Needs work' : 'Strong presence', alert: parseFloat(metrics.confidence) < 7.0 },
             { label: 'Sessions Completed', val: metrics.sessions, detail: 'Total ran' },
           ].map((kpi, i) => (
@@ -94,33 +148,82 @@ const Dashboard = () => {
 
       </div>
 
-      {/* 30 Day Roadmap Component Mock */}
+      {/* Proctoring & Behavioral Analysis Component */}
       <div className="bg-white rounded-[2.5rem] p-8 border border-black/5 shadow-sm">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-2xl font-bold text-darkText flex items-center gap-2">
-            <BookOpen className="text-coral" /> Your 30-Day Roadmap
+            <Target className="text-coral" /> Proctoring & Demeanor Analysis
           </h3>
-          <span className="bg-coral/20 text-coral px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">Nemotron AI Generated</span>
+          <span className="bg-coral/20 text-coral px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide">Computer Vision AI Generated</span>
         </div>
         
-        <div className="grid md:grid-cols-2 gap-6">
-          <div className="border border-coral/20 bg-coral/5 rounded-2xl p-6 relative overflow-hidden group hover:bg-coral/10 transition-colors">
-            <h4 className="font-bold text-lg mb-2 text-darkText">Week 1: Dynamic Programming</h4>
-            <p className="text-sm text-mutedText mb-4 line-clamp-2">You struggled with identifying overlapping subproblems. Focus on memoization techniques.</p>
-            <button className="flex items-center gap-1 text-coral font-bold text-sm bg-white px-3 py-1.5 rounded-full shadow-sm shadow-coral/20">
-              <PlayCircle size={16} /> Drill 5 Questions
-            </button>
-          </div>
-          <div className="border border-black/5 bg-gray-50 rounded-2xl p-6 relative">
-            <h4 className="font-bold text-lg mb-2 text-darkText">Week 2: System Design Basics</h4>
-             <p className="text-sm text-mutedText mb-4 line-clamp-2">Lack of clarity in component diagramming. Watch the provided resources on load balancers.</p>
-             <button className="flex items-center gap-1 text-mutedText font-semibold text-sm">
-                View Resources &rarr;
-            </button>
-          </div>
-        </div>
+        {loadingBehavior ? (
+           <div className="flex items-center justify-center p-8"><div className="w-8 h-8 rounded-full border-2 border-coral border-t-transparent animate-spin"></div></div>
+        ) : behaviorData ? (
+           <div className="flex flex-col gap-6">
+              <div className="flex flex-wrap gap-4 mb-2">
+                 <div className="bg-sage/10 border border-sage/50 px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2">
+                    <span className="text-mutedText">Motion Flags:</span> <span className={metrics.behavior?.motionFlags > 5 ? 'text-red-500' : 'text-green-600'}>{metrics.behavior?.motionFlags || 0}</span>
+                 </div>
+                 <div className="bg-sage/10 border border-sage/50 px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2">
+                    <span className="text-mutedText">Unauthorized Faces:</span> <span className={metrics.behavior?.multiplePeopleFlags > 0 ? 'text-red-500' : 'text-green-600'}>{metrics.behavior?.multiplePeopleFlags || 0}</span>
+                 </div>
+              </div>
+              <p className="text-lg font-medium text-darkText leading-relaxed bg-coral/5 p-4 rounded-xl border border-coral/20">"{behaviorData.summary}"</p>
+              
+              <div className="grid md:grid-cols-2 gap-6 mt-2">
+                <div className="border border-green-200 bg-green-50 rounded-2xl p-6 relative">
+                  <h4 className="font-bold text-lg mb-4 text-green-800 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-green-500"></div> DO's in Real Interviews</h4>
+                  <ul className="space-y-3">
+                     {behaviorData.dos?.map((item, i) => (
+                         <li key={i} className="text-sm font-medium text-green-900 border-b border-green-200/50 pb-2">{item}</li>
+                     ))}
+                  </ul>
+                </div>
+                <div className="border border-red-200 bg-red-50 rounded-2xl p-6 relative">
+                  <h4 className="font-bold text-lg mb-4 text-red-800 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-red-500"></div> DONT's in Real Interviews</h4>
+                  <ul className="space-y-3">
+                     {behaviorData.donts?.map((item, i) => (
+                         <li key={i} className="text-sm font-medium text-red-900 border-b border-red-200/50 pb-2">{item}</li>
+                     ))}
+                  </ul>
+                </div>
+              </div>
+           </div>
+        ) : (
+           <p className="text-mutedText p-4 bg-gray-50 rounded-xl border border-black/5 text-center font-medium">Detailed physical telemetry flags were not detected during this run. Ensure camera runs unblocked next time.</p>
+        )}
       </div>
 
+      {/* Aggregate Strengths & Weaknesses */}
+      {summaryData && (
+          <div className="bg-white rounded-[2.5rem] p-8 mt-6 border border-black/5 shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-2xl font-bold text-darkText flex items-center gap-2">
+                <BookOpen className="text-coral" /> Combined Aggregate Feedback
+              </h3>
+            </div>
+            <p className="text-lg font-medium text-darkText leading-relaxed bg-black/5 p-4 rounded-xl border border-black/10 mb-6 font-mono">"{summaryData.remarks}"</p>
+            <div className="grid md:grid-cols-2 gap-6">
+               <div className="border border-green-200 bg-green-50 rounded-2xl p-6">
+                 <h4 className="font-bold text-lg mb-4 text-green-800 flex items-center gap-2">Detected Strengths</h4>
+                 <ul className="space-y-3">
+                    {summaryData.strengths?.map((item, i) => (
+                        <li key={i} className="text-sm font-medium text-green-900 border-b border-green-200/50 pb-2 flex items-start gap-2"><div className="mt-1 w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" /> {item}</li>
+                    ))}
+                 </ul>
+               </div>
+               <div className="border border-coral/30 bg-coral/5 rounded-2xl p-6">
+                 <h4 className="font-bold text-lg mb-4 text-red-800 flex items-center gap-2">Identified Weaknesses</h4>
+                 <ul className="space-y-3">
+                    {summaryData.weaknesses?.map((item, i) => (
+                        <li key={i} className="text-sm font-medium text-red-900 border-b border-red-200/50 pb-2 flex items-start gap-2"><div className="mt-1 w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" /> {item}</li>
+                    ))}
+                 </ul>
+               </div>
+            </div>
+          </div>
+      )}
     </div>
   );
 };
