@@ -29,6 +29,20 @@ const Dashboard = () => {
     { subject: 'Depth', A: (parseFloat(metrics.depth)/10)*100, fullMark: 100 },
   ], [metrics]);
 
+  const handleExport = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+      metrics,
+      behaviorData,
+      summaryData
+    }, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "interview_report.json");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
+  };
+
   const [behaviorData, setBehaviorData] = useState(null);
   const [summaryData, setSummaryData] = useState(null);
   const [loadingBehavior, setLoadingBehavior] = useState(true);
@@ -92,7 +106,9 @@ const Dashboard = () => {
           <h1 className="text-4xl font-black text-darkText tracking-tight mb-2">Welcome back, Candidate</h1>
           <p className="text-mutedText text-lg">Your mock interview progress is looking stellar. ✦</p>
         </div>
-        <button className="bg-white border border-black/10 px-4 py-2 rounded-xl shadow-sm text-sm font-semibold flex items-center gap-2 hover:bg-gray-50 transition-colors">
+        <button 
+          onClick={handleExport}
+          className="bg-white border border-black/10 px-4 py-2 rounded-xl shadow-sm text-sm font-semibold flex items-center gap-2 hover:bg-gray-50 transition-colors">
           <Download size={16} /> Export Data
         </button>
       </header>
@@ -161,14 +177,6 @@ const Dashboard = () => {
            <div className="flex items-center justify-center p-8"><div className="w-8 h-8 rounded-full border-2 border-coral border-t-transparent animate-spin"></div></div>
         ) : behaviorData ? (
            <div className="flex flex-col gap-6">
-              <div className="flex flex-wrap gap-4 mb-2">
-                 <div className="bg-sage/10 border border-sage/50 px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2">
-                    <span className="text-mutedText">Motion Flags:</span> <span className={metrics.behavior?.motionFlags > 5 ? 'text-red-500' : 'text-green-600'}>{metrics.behavior?.motionFlags || 0}</span>
-                 </div>
-                 <div className="bg-sage/10 border border-sage/50 px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2">
-                    <span className="text-mutedText">Unauthorized Faces:</span> <span className={metrics.behavior?.multiplePeopleFlags > 0 ? 'text-red-500' : 'text-green-600'}>{metrics.behavior?.multiplePeopleFlags || 0}</span>
-                 </div>
-              </div>
               <p className="text-lg font-medium text-darkText leading-relaxed bg-coral/5 p-4 rounded-xl border border-coral/20">"{behaviorData.summary}"</p>
               
               <div className="grid md:grid-cols-2 gap-6 mt-2">

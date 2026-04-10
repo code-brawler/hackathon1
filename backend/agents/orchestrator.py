@@ -33,17 +33,14 @@ class OrchestratorAgent:
         Do NOT wrap the response in markdown blocks or any other formatting. Just pure JSON.
         """
         try:
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-flash-lite-latest", generation_config={"response_mime_type": "application/json"})
             response = model.generate_content(prompt)
             raw_text = response.text.strip()
-            # Clean possible markdown block
-            if raw_text.startswith("```json"):
-                raw_text = raw_text[7:]
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3]
-                
-            questions = json.loads(raw_text.strip())
-            return questions
+            parsed = json.loads(raw_text)
+            # Handle model injecting a {"questions": [...]} wrapper instead of raw array
+            if isinstance(parsed, dict) and "questions" in parsed:
+                return parsed["questions"]
+            return parsed
         except Exception as e:
             print("Error generating questions:", e)
             return [

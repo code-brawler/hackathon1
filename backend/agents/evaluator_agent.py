@@ -34,16 +34,10 @@ class EvaluatorAgent:
         Do NOT wrap the response in markdown blocks or any other formatting. Just pure JSON.
         """
         try:
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-flash-latest", generation_config={"response_mime_type": "application/json"})
             response = model.generate_content(prompt)
             raw_text = response.text.strip()
-            # Clean possible markdown block
-            if raw_text.startswith("```json"):
-                raw_text = raw_text[7:]
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3]
-                
-            payload = json.loads(raw_text.strip())
+            payload = json.loads(raw_text)
             return {
                 "score": int(payload.get("score", 5)),
                 "feedback": str(payload.get("feedback", "No feedback provided.")),
@@ -109,11 +103,9 @@ class EvaluatorAgent:
         "remarks": 1 sentence summary conclusion.
         """
         try:
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-flash-lite-latest", generation_config={"response_mime_type": "application/json"})
             response = model.generate_content(prompt)
             raw_text = response.text.strip()
-            if raw_text.startswith("```json"): raw_text = raw_text[7:]
-            if raw_text.endswith("```"): raw_text = raw_text[:-3]
-            return json.loads(raw_text.strip())
+            return json.loads(raw_text)
         except Exception as e:
             return {"strengths": ["General structural stability."], "weaknesses": ["Offline. Failed to generate deep semantics."], "remarks": "Summary generator failed dynamically."}

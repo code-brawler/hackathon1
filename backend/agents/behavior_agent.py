@@ -31,15 +31,10 @@ class BehaviorAgent:
         - "donts": An array of exactly 2 actionable physical instructions (strings) on what NOT to do next time physically.
         """
         try:
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            model = genai.GenerativeModel("gemini-flash-lite-latest", generation_config={"response_mime_type": "application/json"})
             response = model.generate_content(prompt)
             raw_text = response.text.strip()
-            if raw_text.startswith("```json"):
-                raw_text = raw_text[7:]
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3]
-                
-            return json.loads(raw_text.strip())
+            return json.loads(raw_text)
         except Exception as e:
             print("Error parsing behavior:", e)
             return {

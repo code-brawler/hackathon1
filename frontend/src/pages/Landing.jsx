@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import PillNav from '../components/ui/PillNav';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Landing = () => {
+  const [showDemo, setShowDemo] = useState(false);
   return (
     <div className="min-h-screen flex flex-col relative w-full items-center">
       <PillNav />
@@ -38,7 +39,9 @@ const Landing = () => {
             >
               Start Free →
             </Link>
-            <button className="bg-white/50 backdrop-blur-sm border border-white/60 text-darkText px-8 py-4 rounded-full text-lg font-semibold hover:bg-white/80 transition-all">
+            <button 
+              onClick={() => setShowDemo(true)}
+              className="bg-white/50 backdrop-blur-sm border border-white/60 text-darkText px-8 py-4 rounded-full text-lg font-semibold hover:bg-white/80 transition-all">
               Watch Demo
             </button>
           </div>
@@ -81,9 +84,70 @@ const Landing = () => {
             By combining completely free, privacy-first browser API logic with dynamic Python heuristics, we created a localized agentic experience that dynamically adapts to your weaknesses without costing a dime in API calls. 
             Because you deserve a space to practice that breathes.
           </p>
+          
+          <div className="mt-8 pt-8 border-t border-black/10">
+            <h3 className="text-xl font-bold text-darkText mb-4 flex items-center gap-2">Connect with the developer</h3>
+            <div className="flex flex-col sm:flex-row gap-4 sm:items-center">
+              <a href="https://github.com/code-brawler/" target="_blank" rel="noreferrer" className="text-darkText font-semibold hover:text-coral transition-colors flex items-center gap-2">
+                GitHub: @code-brawler
+              </a>
+              <span className="hidden sm:inline text-black/20">|</span>
+              <a href="mailto:way2utkarshraj@gmail.com" className="text-darkText font-semibold hover:text-coral transition-colors flex items-center gap-2">
+                Email: way2utkarshraj@gmail.com
+              </a>
+            </div>
+          </div>
         </motion.div>
 
       </main>
+
+      {/* Demo Walkthrough Modal */}
+      <AnimatePresence>
+        {showDemo && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowDemo(false)}>
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-white/95 backdrop-blur-xl rounded-[2.5rem] p-8 md:p-12 max-w-5xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative"
+              onClick={e => e.stopPropagation()}
+            >
+              <button 
+                className="absolute top-6 right-6 text-mutedText hover:text-coral transition-colors p-3 bg-gray-100 hover:bg-white rounded-full z-10"
+                onClick={() => setShowDemo(false)}
+              >
+                ✕
+              </button>
+              
+              <h2 className="text-3xl md:text-4xl font-black text-darkText mb-4 tracking-tight text-center">How InterviewIQ Works</h2>
+              <p className="text-mutedText text-center max-w-2xl mx-auto mb-12">Just two simple steps before you're mock-interviewing with state-of-the-art vision and voice AI.</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                <div className="flex flex-col items-center">
+                  <div className="w-full bg-sage/20 border border-black/5 rounded-3xl overflow-hidden mb-6 shadow-lg shadow-black/5">
+                    <img src="/demo1.jpg" alt="Step 1: Select Role" className="w-full h-auto object-cover" />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-3 text-darkText">1. Choose Your Target Role</h3>
+                  <p className="text-mutedText text-center leading-relaxed">
+                    Once you hit Start, the system configures your specific domain. Select "Frontend Developer" or "Data Scientist" and add your experience level so Gemini structures relevant technical questions.
+                  </p>
+                </div>
+                
+                <div className="flex flex-col items-center">
+                  <div className="w-full bg-sage/20 border border-black/5 rounded-3xl overflow-hidden mb-6 shadow-lg shadow-black/5">
+                    <img src="/demo2.jpg" alt="Step 2: Start Mock Interview" className="w-full h-auto object-cover" />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-3 text-darkText">2. Grant Face & Voice Access</h3>
+                  <p className="text-mutedText text-center leading-relaxed">
+                    Hit "Start Session" to allow browser pipeline permissions. We securely spin up the MediaPipe Computer Vision tracker and native Audio processing stream to analyze your actual body language and delivery.
+                  </p>
+                </div>
+              </div>
+              
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -20,7 +20,17 @@ export const useSpeechAI = (onTranscriptSubmit) => {
         try { recognitionRef.current.stop(); } catch(e){}
         try { recognitionRef.current.disconnect(); } catch(e){}
       }
-      window.speechSynthesis.cancel();
+      try {
+          if (window.currentAudio) {
+              window.currentAudio.pause();
+              window.currentAudio.src = "";
+              window.currentAudio = null;
+          }
+      } catch(e) {}
+      
+      try {
+          if (window.speechSynthesis) window.speechSynthesis.cancel();
+      } catch(e) {}
     };
   }, []);
 
@@ -192,49 +202,61 @@ export const useSpeechAI = (onTranscriptSubmit) => {
   const speakText = useCallback((text, onComplete = () => {}) => {
     if (!text) return;
     
-    // Check support
-    if (!window.speechSynthesis) {
-        console.error("speechSynthesis not supported natively.");
-        return;
-    }
-    
-    // Stop any current reading
-    window.speechSynthesis.cancel();
-
     setIsSpeaking(true);
+
+    try {
+        if (window.currentAudio) {
+            window.currentAudio.pause();
+            window.currentAudio.src = "";
+            window.currentAudio = null;
+        }
+        if (window.speechSynthesis) {
+            window.speechSynthesis.cancel();
+        }
+    } catch(e) {}
+
+    const voice = "Brian";
+    // Strip characters that break StreamElements URL parsing
+    const safeText = text.replace(/['"!*()]/g, '');
+    const encodedText = encodeURIComponent(safeText);
+    const audioUrl = `https://api.streamelements.com/kappa/v2/speech?voice=${voice}&text=${encodedText}`;
     
-    const utterance = new SpeechSynthesisUtterance(text);
+    const audio = new Audio(audioUrl);
+    window.currentAudio = audio;
     
-    // Protect utterance from Chrome GC bug natively
-    window.utterances = window.utterances || [];
-    window.utterances.push(utterance);
-    
-    // Select highest quality OS-level human-sounding voice available
-    const setOptimizedVoice = () => {
-        const voices = window.speechSynthesis.getVoices();
-        const premium = voices.find(v => v.name.includes('Premium') || v.name.includes('Natural') || v.name.includes('Google US'));
-        if (premium) utterance.voice = premium;
-    };
-    setOptimizedVoice();
-    // Some browsers load voices async, listener applies fallback map natively
-    window.speechSynthesis.onvoiceschanged = setOptimizedVoice;
-    
-    // Optimized playback parameters to sound clear and conversational
-    utterance.rate = 0.9;
-    utterance.pitch = 1.0;
-    
-    utterance.onend = () => {
+    audio.onended = () => {
         setIsSpeaking(false);
         onComplete();
     };
     
-    utterance.onerror = (e) => {
-        console.error("TTS Output Error", e);
-        setIsSpeaking(false);
+    let fallbackTriggered = false;
+    const triggerFallback = () => {
+        if (fallbackTriggered) return;
+        fallbackTriggered = true;
+        
+        if (window.speechSynthesis) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            window.utterances = window.utterances || [];
+            window.utterances.push(utterance); // Fix Chrome GC bug
+            
+            utterance.onend = () => { setIsSpeaking(false); onComplete(); };
+            utterance.onerror = () => { setIsSpeaking(false); onComplete(); };
+            window.speechSynthesis.speak(utterance);
+        } else {
+            setIsSpeaking(false);
+            onComplete();
+        }
     };
-
-    window.speechSynthesis.speak(utterance);
     
+    audio.onerror = (e) => {
+        console.error("TTS Output Error", e);
+        triggerFallback();
+    };
+    
+    audio.play().catch(e => {
+        console.error("Audio playback prevented:", e);
+        triggerFallback();
+    });
   }, []);
 
   const submitAnswer = useCallback(() => {

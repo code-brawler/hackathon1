@@ -71,7 +71,10 @@ const Interview = () => {
               body: JSON.stringify({ role: targetRole, exp, tech, focus })
           });
           const data = await response.json();
-          const fetchedQs = data.questions;
+          let fetchedQs = data.questions;
+          if (fetchedQs && !Array.isArray(fetchedQs) && Array.isArray(fetchedQs.questions)) {
+              fetchedQs = fetchedQs.questions;
+          }
           
           setQuestionsList(fetchedQs);
           setCurrentIdx(0);
@@ -79,7 +82,7 @@ const Interview = () => {
           setSessionStarted(true);
           
           // Feature 2: Automatically map the first question text into TTS
-          speakText(fetchedQs[0].text);
+          speakText(fetchedQs[0]?.text || "Let's begin the interview.");
           
       } catch (e) {
           console.error("Failed to generate questions:", e);
@@ -131,8 +134,8 @@ const Interview = () => {
       } else {
           // Interview completed natively
           setCurrentIdx(nextIdx); // push one past the final slot
-          speakText("Alright! That's all my questions. Thanks for interviewing! Let's check out your dashboard.", () => {
-              setTimeout(() => endInterview(evalData.score), 2000);
+          speakText("Interview complete. Generating your dashboard.", () => {
+              endInterview(evalData.score);
           });
       }
       
@@ -159,8 +162,8 @@ const Interview = () => {
           setCurrentIdx(nextIdx);
           speakText(questionsList[nextIdx].text);
       } else {
-          speakText("Alright! That's all my questions. Thanks for interviewing! Let's check out your dashboard.", () => {
-              setTimeout(() => endInterview(null), 2000);
+          speakText("Interview complete. Generating your dashboard.", () => {
+              endInterview(null);
           });
       }
   };
